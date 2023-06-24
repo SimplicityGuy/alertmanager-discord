@@ -8,14 +8,14 @@ LABEL org.opencontainers.image.title="alertmanager-discord builder" \
       org.opencontainers.image.created="$(date +'%Y-%m-%d')" \
       org.opencontainers.image.base.name="docker.io/library/golang:alpine"
 
-COPY . $GOPATH/src/mypackage/myapp/
-WORKDIR $GOPATH/src/mypackage/myapp/
-
 # hadolint ignore=DL3018
 RUN apk update && \
     apk add ca-certificates git --no-cache && \
     rm /var/cache/apk/* && \
     adduser -D -g '' notifier
+
+COPY . $GOPATH/src/alertmanager-discord/
+WORKDIR $GOPATH/src/alertmanager-discord/
 
 RUN go get -d -v && \
     CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o /go/bin/alertmanager-discord
