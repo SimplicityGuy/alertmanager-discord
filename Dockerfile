@@ -9,8 +9,10 @@ LABEL org.opencontainers.image.title="alertmanager-discord builder" \
       org.opencontainers.image.base.name="docker.io/library/golang:alpine"
 
 # hadolint ignore=DL3018
-RUN apk update && \
-    apk add ca-certificates git --no-cache && \
+RUN apk update --quiet --no-cache && \
+    apk add --quiet --no-cache \
+        ca-certificates \
+        git && \
     rm /var/cache/apk/* && \
     adduser -D -g '' notifier
 
