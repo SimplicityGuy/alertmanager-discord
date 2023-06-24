@@ -1,18 +1,34 @@
 FROM golang:alpine as builder
 
+LABEL org.opencontainers.image.title="alertmanager-discord builder" \
+      org.opencontainers.image.description="alertmanager-discord builder" \
+      org.opencontainers.image.authors="robert@simplicityguy.com" \
+      org.opencontainers.image.source="https://github.com/SimplicityGuy/alertmanager-discord/blob/main/Dockerfile" \
+      org.opencontainers.image.licenses="Apache" \
+      org.opencontainers.image.created="$(date +'%Y-%m-%d')" \
+      org.opencontainers.image.base.name="docker.io/library/golang:alpine"
+
+COPY . $GOPATH/src/alertmanager-discord/
+WORKDIR $GOPATH/src/alertmanager-discord/
+
+# hadolint ignore=DL3018
 RUN apk update && \
-    apk add ca-certificates git && \
-    adduser -D -g '' appuser
+    apk add ca-certificates git --no-cache && \
+    rm /var/cache/apk/* && \
+    adduser -D -g '' notifier
 
-COPY . $GOPATH/src/mypackage/myapp/
-WORKDIR $GOPATH/src/mypackage/myapp/
-
-RUN go get -d -v
-
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o /go/bin/alertmanager-discord
-
+RUN go get -d -v && \
+    CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o /go/bin/alertmanager-discord
 
 FROM scratch
+
+LABEL org.opencontainers.image.title="alertmanager-discord" \
+      org.opencontainers.image.description="Take your alertmanager alerts, into discord." \
+      org.opencontainers.image.authors="robert@simplicityguy.com" \
+      org.opencontainers.image.source="https://github.com/SimplicityGuy/alertmanager-discord/blob/main/Dockerfile" \
+      org.opencontainers.image.licenses="Apache" \
+      org.opencontainers.image.created="$(date +'%Y-%m-%d')" \
+      org.opencontainers.image.base.name="docker.io/library/scratch"
 
 ENV LISTEN_ADDRESS=0.0.0.0:9094
 
@@ -22,6 +38,6 @@ COPY --from=builder /go/bin/alertmanager-discord /go/bin/alertmanager-discord
 
 EXPOSE 9094
 
-USER appuser
+USER notifier
 
 ENTRYPOINT ["/go/bin/alertmanager-discord"]
