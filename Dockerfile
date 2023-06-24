@@ -9,7 +9,8 @@ LABEL org.opencontainers.image.title="alertmanager-discord builder" \
       org.opencontainers.image.base.name="docker.io/library/golang:alpine"
 
 # hadolint ignore=DL3018
-RUN apk update --quiet --no-cache && \
+RUN apk update --quiet && \
+    apk upgrade --quiet && \
     apk add --quiet --no-cache \
         ca-certificates \
         git && \
