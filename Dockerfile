@@ -8,8 +8,8 @@ LABEL org.opencontainers.image.title="alertmanager-discord builder" \
       org.opencontainers.image.created="$(date +'%Y-%m-%d')" \
       org.opencontainers.image.base.name="docker.io/library/golang:alpine"
 
-COPY . $GOPATH/src/alertmanager-discord/
-WORKDIR $GOPATH/src/alertmanager-discord/
+COPY . $GOPATH/src/mypackage/myapp/
+WORKDIR $GOPATH/src/mypackage/myapp/
 
 # hadolint ignore=DL3018
 RUN apk update && \
