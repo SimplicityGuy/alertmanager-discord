@@ -4,7 +4,9 @@
 
 Give this a webhook (with the DISCORD_WEBHOOK environment variable) and point it as a webhook on alertmanager, and it will post your alerts into a discord channel for you as they trigger:
 
-![](/images/demo-new.png)
+## Example Notification
+
+![](/images/example.png)
 
 ## Warning
 
