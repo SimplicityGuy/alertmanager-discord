@@ -14,19 +14,41 @@ This program is not a replacement to alertmanager, it accepts webhooks from aler
 
 The standard data flow should be:
 
-```
-Prometheus -------------> alertmanager -------------------> alertmanager-discord
-
-alerting:                 receivers:
-  alertmanagers:          - name: 'discord_webhook'         environment:
-  - static_configs:         webhook_configs:                   - DISCORD_WEBHOOK=https://discordapp.com/api/we...
-    - targets:              - url: 'http://localhost:9094'
-       - 127.0.0.1:9093
+```mermaid
+flowchart LR;
+    Prometheus==>alertmanager;
+    alertmanager==>alertmanager-discord;
 ```
 
-## Example alertmanager config:
+Example Prometheus config:
 
+```yaml
+alerting:
+  alertmanagers:
+    - static_configs:
+      - targets:
+        - 127.0.0.1:9093
 ```
+
+Example alertmanager config:
+
+```yaml
+receivers:
+- name: 'discord_webhook'
+  webhook_configs:
+    - url: 'http://localhost:9094'
+```
+
+Example alertmanager-discord config:
+
+```yaml
+environment:
+  - DISCORD_WEBHOOK=https://discordapp.com/api/we...
+```
+
+## Complete example alertmanager config:
+
+```yaml
 global:
   # The smarthost and SMTP sender used for mail notifications.
   smtp_smarthost: 'localhost:25'
