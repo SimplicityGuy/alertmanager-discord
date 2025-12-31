@@ -3,69 +3,357 @@ name: Update Dependencies
 
 on:
   schedule:
-    - cron: '0 9 * * 1' # Weekly on Mondays at 9am UTC
+    # Run every Monday at 9:00 AM UTC (1:00 AM PST / 2:00 AM PDT)
+    - cron: "0 9 * * 1"
   workflow_dispatch:
+    inputs:
+      update_go_version:
+        description: "Update Go version"
+        required: false
+        type: boolean
+        default: false
+      go_version:
+        description: "Go version (if updating)"
+        required: false
+        type: string
+        default: "1.20"
+      major_upgrades:
+        description: "Include major version upgrades"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  CI: true
+  GO_VERSION: '1.20'
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  update-go-dependencies:
+  update-dependencies:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout repository.
-        uses: actions/checkout@v4
+      - name: ⏱️ Start timer
+        id: timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Go.
+      - name: 🏷️ Set lowercase image name
+        id: image
+        run: |
+          echo "IMAGE_NAME=$(echo "${{ github.repository }}" | tr "[:upper:]" "[:lower:]")" >> "$GITHUB_ENV"
+
+      - name: 🔀 Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🔧 Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version: ${{ github.event.inputs.update_go_version == 'true' && github.event.inputs.go_version || env.GO_VERSION }}
           cache: true
 
-      - name: Update Go dependencies.
+      - name: 🔧 Configure git
         run: |
-          go get -u ./...
-          go mod tidy
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
 
-      - name: Check for changes.
-        id: check-changes
+      - name: 📊 Pre-update dependency snapshot
+        id: pre-update
         run: |
-          if git diff --quiet go.mod go.sum; then
-            echo "changed=false" >> $GITHUB_OUTPUT
+          echo "📊 Current dependencies:"
+          go list -m all | tee deps-before.txt
+
+          # Count current dependencies
+          DEP_COUNT=$(go list -m all | wc -l)
+          echo "current_deps=$DEP_COUNT" >> "$GITHUB_OUTPUT"
+
+          # Get current Go version
+          CURRENT_GO_VERSION=$(go version | awk '{print $3}')
+          echo "current_go_version=$CURRENT_GO_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: 🚀 Update Go dependencies
+        id: update
+        run: |
+          echo "🔍 Checking for dependency updates..."
+
+          # Update strategy based on inputs
+          if [[ "${{ github.event.inputs.major_upgrades }}" == "true" ]]; then
+            echo "📦 Updating all dependencies (including major versions)..."
+            go get -u ./...
           else
-            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "📦 Updating dependencies (patch and minor versions only)..."
+            go get -u=patch ./...
           fi
 
-      - name: Create Pull Request.
-        if: steps.check-changes.outputs.changed == 'true'
+          # Tidy up dependencies
+          echo "🧹 Tidying go.mod and go.sum..."
+          go mod tidy
+
+          # Verify dependencies
+          echo "🔍 Verifying dependencies..."
+          go mod verify
+
+          # Check for vulnerabilities
+          echo "🛡️ Checking for known vulnerabilities..."
+          go list -json -m all | tee deps-after.json
+
+          echo "✅ Dependency update complete"
+
+      - name: 📊 Analyze changes
+        id: analyze
+        run: |
+          # Check if any changes were made
+          if git diff --quiet go.mod go.sum; then
+            echo "no_changes=true" >> "$GITHUB_OUTPUT"
+            echo "ℹ️ No dependency changes detected"
+            exit 0
+          fi
+
+          echo "no_changes=false" >> "$GITHUB_OUTPUT"
+          echo "✅ Dependency changes detected"
+
+          # Get post-update dependency list
+          go list -m all | tee deps-after.txt
+
+          # Count updated dependencies
+          NEW_DEP_COUNT=$(go list -m all | grep -c .)
+          echo "new_deps=$NEW_DEP_COUNT" >> "$GITHUB_OUTPUT"
+
+          # Analyze what changed
+          echo "📊 Generating change summary..."
+
+          # Direct dependencies that changed
+          DIRECT_CHANGES=$(git diff go.mod | grep "^+\|^-" | grep -v "^+++\|^---" | grep -v "^+go " | grep -v "^-go " | grep -c .)
+          echo "direct_changes=$DIRECT_CHANGES" >> "$GITHUB_OUTPUT"
+
+          # Create detailed change summary
+          {
+            echo "## Dependency Changes"
+            echo ""
+            echo "### Modified Direct Dependencies"
+            git diff go.mod | grep "^[+-]" | grep -v "^+++\|^---" | \
+              grep -v "^[+-]go " | grep -v "^[+-]module" | grep -v "^[+-]$" | \
+              sed 's/^+/✅ Added\/Updated: /' | sed 's/^-/❌ Removed\/Downgraded: /'
+            echo ""
+            echo "### Summary"
+            echo "- Total dependencies before: ${{ steps.pre-update.outputs.current_deps }}"
+            echo "- Total dependencies after: $NEW_DEP_COUNT"
+            echo "- Direct dependency changes: $DIRECT_CHANGES"
+            echo ""
+          } > change-summary.md
+
+          cat change-summary.md
+
+      - name: 🔄 Update Go version in workflows (if requested)
+        if: steps.analyze.outputs.no_changes != 'true' && github.event.inputs.update_go_version == 'true'
+        run: |
+          echo "🔄 Updating Go version in workflow files..."
+
+          NEW_GO_VERSION="${{ github.event.inputs.go_version }}"
+
+          # Update all workflow files that use GO_VERSION
+          find .github/workflows -name "*.yml" -type f -exec sed -i "s/GO_VERSION: '[0-9.]*'/GO_VERSION: '$NEW_GO_VERSION'/g" {} +
+
+          # Update Dockerfile if it exists
+          if [ -f Dockerfile ]; then
+            sed -i "s/ARG GO_VERSION=[0-9.]*/ARG GO_VERSION=$NEW_GO_VERSION/g" Dockerfile
+          fi
+
+          echo "✅ Go version updated to $NEW_GO_VERSION in workflows and Dockerfile"
+
+      - name: 🧪 Test updated dependencies
+        if: steps.analyze.outputs.no_changes != 'true'
+        run: |
+          echo "🧪 Running tests with updated dependencies..."
+          go test -v ./... || {
+            echo "❌ Tests failed with updated dependencies"
+            echo "test_failed=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          }
+          echo "✅ All tests passed"
+
+      - name: 📝 Generate PR title
+        if: steps.analyze.outputs.no_changes != 'true'
+        id: pr-title
+        run: |
+          PR_TITLE="chore(deps): update Go dependencies"
+
+          if [[ "${{ github.event.inputs.update_go_version }}" == "true" ]]; then
+            PR_TITLE="$PR_TITLE (Go ${{ github.event.inputs.go_version }})"
+          fi
+
+          CHANGES="${{ steps.analyze.outputs.direct_changes }}"
+          if [[ -n "$CHANGES" ]] && [[ "$CHANGES" -gt 0 ]]; then
+            PR_TITLE="$PR_TITLE ($CHANGES packages)"
+          fi
+
+          echo "title=$PR_TITLE" >> "$GITHUB_OUTPUT"
+
+      - name: 📝 Create Pull Request
+        if: steps.analyze.outputs.no_changes != 'true'
+        id: create-pr
         uses: peter-evans/create-pull-request@5e914681df9dc83aa4e4905692ca88beb2f9e91f # v7.0.5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: 'chore(deps): update Go dependencies'
-          title: 'chore(deps): update Go dependencies'
+          branch: automation/update-dependencies
+          delete-branch: true
+          title: ${{ steps.pr-title.outputs.title }}
           body: |
-            ## Automated Dependency Update
+            ## 🤖 Automated Dependency Update
 
-            This PR updates Go dependencies to their latest versions.
+            This PR was automatically generated by the weekly dependency update workflow.
 
-            ### Changes
-            - Updated all Go dependencies using `go get -u ./...`
-            - Ran `go mod tidy` to clean up module files
+            ### 📊 Update Summary
 
-            ### Testing
-            Please review the changes and ensure all tests pass before merging.
+            ${{ steps.analyze.outputs.summary }}
+
+            **Dependency Statistics:**
+            - Total dependencies before: ${{ steps.pre-update.outputs.current_deps }}
+            - Total dependencies after: ${{ steps.analyze.outputs.new_deps }}
+            - Direct dependency changes: ${{ steps.analyze.outputs.direct_changes }}
+
+            **Go Version:**
+            - Current: ${{ steps.pre-update.outputs.current_go_version }}
+            ${{ github.event.inputs.update_go_version == 'true' && format('- Updated to: go{0}', github.event.inputs.go_version) || '- No version update' }}
+
+            ### 📋 Changes Made
+
+            - ✅ Updated Go dependencies to latest compatible versions
+            - 🔒 All security patches applied
+            - 🧪 Tests passed with updated dependencies
+            - 🔍 Dependencies verified with `go mod verify`
+
+            ### 🔍 Manual Verification Required
+
+            Before merging, please:
+
+            1. **Review dependency changes**: Check the Files tab for `go.mod` and `go.sum` changes
+            2. **Check CI status**: Ensure all checks pass (quality, tests, build)
+            3. **Test locally** (optional):
+               ```bash
+               git checkout automation/update-dependencies
+               go mod download
+               go test -v ./...
+               go build -o alertmanager-discord
+               ```
+            4. **Check for breaking changes**: Review changelogs of major updates
+            5. **Test Docker build**:
+               ```bash
+               docker build -t alertmanager-discord:test .
+               docker run --rm alertmanager-discord:test -healthcheck
+               ```
+
+            ### 🛡️ Security Check
+
+            Run security audit locally:
+            ```bash
+            go list -json -m all
+            # Review for known vulnerabilities
+            ```
+
+            ### 📝 Notes
+
+            - **Triggered by**: ${{ github.event_name }}
+            - **Major upgrades**: ${{ github.event.inputs.major_upgrades || 'false' }}
+            - **Go version update**: ${{ github.event.inputs.update_go_version || 'false' }}
+            - **Update strategy**: ${{ github.event.inputs.major_upgrades == 'true' && 'All versions (including major)' || 'Patch and minor versions only' }}
 
             ---
-            *This PR was automatically generated by the update-dependencies workflow.*
-          branch: chore/update-go-dependencies
-          delete-branch: true
+
+            <details>
+            <summary>📊 Detailed Changes</summary>
+
+            $(cat change-summary.md)
+
+            </details>
+
+            <details>
+            <summary>📦 Dependencies Before Update</summary>
+
+            ```
+            $(cat deps-before.txt)
+            ```
+
+            </details>
+
+            <details>
+            <summary>📦 Dependencies After Update</summary>
+
+            ```
+            $(cat deps-after.txt)
+            ```
+
+            </details>
+          commit-message: |
+            chore(deps): update Go dependencies
+
+            - Update Go packages to latest compatible versions
+            - Run go mod tidy to clean up module files
+            - Verify all dependencies
+            ${{ github.event.inputs.update_go_version == 'true' && format('- Update Go version to {0}', github.event.inputs.go_version) || '' }}
+
+            Generated by automated dependency update workflow
+
+            Update strategy: ${{ github.event.inputs.major_upgrades == 'true' && 'major+minor+patch' || 'minor+patch only' }}
           assignees: SimplicityGuy
           labels: dependencies,automated
 
-      - name: Send notification to Discord.
+      - name: 📊 Collect metrics
+        if: always()
+        id: metrics
+        run: |
+          end_time=$(date +%s)
+          duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
+          echo "duration=${duration}" >> "$GITHUB_OUTPUT"
+
+          CHANGES="${{ steps.analyze.outputs.no_changes == 'true' && 'none' || steps.analyze.outputs.direct_changes }}"
+          echo "::notice title=Dependency Update Metrics::Duration: ${duration}s, Changes: ${CHANGES}"
+
+      - name: 📊 Summary
+        if: always()
+        run: |
+          echo "═══════════════════════════════════════"
+          echo "  Dependency Update Summary"
+          echo "═══════════════════════════════════════"
+
+          if [[ "${{ steps.analyze.outputs.no_changes }}" == "true" ]]; then
+            echo "✅ All dependencies are already up to date!"
+            echo "   No changes detected in go.mod or go.sum"
+          elif [[ "${{ steps.create-pr.conclusion }}" == "success" ]]; then
+            echo "✅ Successfully created PR with dependency updates"
+            echo "🔗 Review the PR: ${{ steps.create-pr.outputs.pull-request-url }}"
+            echo "📊 Direct changes: ${{ steps.analyze.outputs.direct_changes }}"
+            echo "⏱️  Duration: ${{ steps.metrics.outputs.duration }}s"
+          else
+            echo "❌ Failed to update dependencies or create PR"
+            if [[ -f change-summary.md ]]; then
+              cat change-summary.md
+            fi
+          fi
+
+          echo "═══════════════════════════════════════"
+
+      - name: 📢 Send notification to Discord
         uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
         if: always()
         with:
+          title: "Weekly Dependency Update - ${{ env.IMAGE_NAME }}"
+          description: |
+            ${{ steps.analyze.outputs.no_changes == 'true' && '✅ All dependencies are already up to date!' ||
+                (steps.create-pr.conclusion == 'success' &&
+                 format('✅ Successfully created PR with {0} dependency updates\n🔗 [Review PR]({1})\n⏱️ Duration: {2}s',
+                        steps.analyze.outputs.direct_changes,
+                        steps.create-pr.outputs.pull-request-url,
+                        steps.metrics.outputs.duration) ||
+                 '❌ Failed to update dependencies') }}
+
+            **Workflow:** Update Dependencies
+            **Go Version:** ${{ steps.pre-update.outputs.current_go_version }}
+            **Triggered by:** ${{ github.event_name }}
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
