@@ -1,9 +1,10 @@
 #####
-# alertmanager-discord specific
+# Project-specific binaries
 #####
 alertmanager-discord
 alertmanager-discord.darwin
 alertmanager-discord.linux
+alertmanager-discord.windows
 
 #####
 # Go
@@ -18,11 +19,189 @@ alertmanager-discord.linux
 # Test binary, built with `go test -c`
 *.test
 
-# Output of the go coverage tool, specifically when used with LiteIDE
+# Output of the go coverage tool
 *.out
-
-# Dependency directories (remove the comment below to include it)
-# vendor/
+coverage.out
+coverage.xml
+coverage.html
+coverage.json
+code-coverage-results.md
 
 # Go workspace file
 go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# Go build cache
+.cache/
+
+# Profiling and benchmarking
+*.prof
+*.pprof
+*.cpu
+*.mem
+bench.txt
+bench_prev.txt
+
+# Delve debugger
+__debug_bin*
+
+#####
+# IDEs and Editors
+#####
+# VSCode
+.vscode/
+*.code-workspace
+
+# IntelliJ IDEA / GoLand
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+*.swp
+*.swo
+*~
+.*.sw?
+
+# Emacs
+\#*#
+.#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+#####
+# OS Files
+#####
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+.Trash-*
+
+#####
+# Environment and Configuration
+#####
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.docker
+.env.production
+
+# Local configuration overrides
+*.local
+
+#####
+# Security
+#####
+# Private keys and certificates
+*.pem
+*.key
+*.crt
+*.cer
+*.p12
+*.pfx
+
+# Secret files
+secrets/
+*.secret
+
+#####
+# Logs and Temporary Files
+#####
+# Log files
+*.log
+logs/
+log/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Cache
+.cache/
+cache/
+
+#####
+# Build and Distribution
+#####
+# Build directories
+build/
+dist/
+out/
+bin/
+pkg/
+
+# Release archives
+*.tar.gz
+*.zip
+*.tar
+*.tgz
+
+#####
+# Testing and Coverage
+#####
+# Test output
+test-output/
+testdata/output/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+
+# Pre-commit
+.pre-commit-cache/
+
+#####
+# CI/CD
+#####
+# Codecov
+.codecov.yml.bak
+
+# GoReleaser
+dist/
+.goreleaser.yml.bak
+
+#####
+# Documentation Build
+#####
+# Generated docs
+site/
+docs/_build/
+
+#####
+# Miscellaneous
+#####
+# Backup files
+*.bak
+*.backup
+*~
+
+# Node modules (if any frontend tooling)
+node_modules/
+
+# Python (if any scripts)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
