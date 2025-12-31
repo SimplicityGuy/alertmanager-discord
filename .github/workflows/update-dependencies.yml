@@ -109,7 +109,14 @@ jobs:
         id: analyze
         run: |
           # Check if any changes were made
-          if git diff --quiet go.mod go.sum; then
+          # Handle projects without go.sum (standard library only)
+          if [ -f go.sum ]; then
+            if git diff --quiet go.mod go.sum; then
+              echo "no_changes=true" >> "$GITHUB_OUTPUT"
+              echo "ℹ️ No dependency changes detected"
+              exit 0
+            fi
+          elif git diff --quiet go.mod; then
             echo "no_changes=true" >> "$GITHUB_OUTPUT"
             echo "ℹ️ No dependency changes detected"
             exit 0
