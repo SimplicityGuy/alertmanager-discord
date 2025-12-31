@@ -73,6 +73,7 @@ const defaultListenAddress = "127.0.0.1:9094"
 var (
 	whURL         = flag.String("webhook.url", os.Getenv("DISCORD_WEBHOOK"), "Discord WebHook URL.")
 	listenAddress = flag.String("listen.address", os.Getenv("LISTEN_ADDRESS"), "Address:Port to listen on.")
+	healthcheck   = flag.Bool("healthcheck", false, "Perform health check and exit.")
 )
 
 func checkWhURL(whURL string) {
@@ -163,42 +164,86 @@ func sendRawPromAlertWarn() {
 	http.Post(*whURL, "application/json", bytes.NewReader(DOD))
 }
 
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+		log.Printf("Failed to write health response: %v", err)
+	}
+}
+
+func webhookHandler(w http.ResponseWriter, r *http.Request) {
+	log.Printf("%s - [%s] %s", r.Host, r.Method, r.URL.RawPath)
+
+	b, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		panic(err)
+	}
+
+	amo := alertManOut{}
+	err = json.Unmarshal(b, &amo)
+	if err != nil {
+		if isRawPromAlert(b) {
+			sendRawPromAlertWarn()
+			return
+		}
+
+		if len(b) > 1024 {
+			log.Printf("Failed to unpack inbound alert request - %s...", string(b[:1023]))
+
+		} else {
+			log.Printf("Failed to unpack inbound alert request - %s", string(b))
+		}
+
+		return
+	}
+
+	sendWebhook(&amo)
+}
+
+func performHealthCheck() {
+	addr := os.Getenv("LISTEN_ADDRESS")
+	if addr == "" {
+		addr = defaultListenAddress
+	}
+
+	resp, err := http.Get(fmt.Sprintf("http://%s/health", addr))
+	if err != nil {
+		log.Printf("Health check failed: %v", err)
+		os.Exit(1)
+	}
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close response body: %v", err)
+		}
+	}()
+
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("Health check failed: status code %d", resp.StatusCode)
+		os.Exit(1)
+	}
+
+	os.Exit(0)
+}
+
 func main() {
 	flag.Parse()
+
+	if *healthcheck {
+		performHealthCheck()
+		return
+	}
+
 	checkWhURL(*whURL)
 
 	if *listenAddress == "" {
 		*listenAddress = defaultListenAddress
 	}
 
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/", webhookHandler)
+
 	log.Printf("Listening on: %s", *listenAddress)
-	log.Fatalf("Failed to listen on HTTP: %v",
-		http.ListenAndServe(*listenAddress, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			log.Printf("%s - [%s] %s", r.Host, r.Method, r.URL.RawPath)
-
-			b, err := ioutil.ReadAll(r.Body)
-			if err != nil {
-				panic(err)
-			}
-
-			amo := alertManOut{}
-			err = json.Unmarshal(b, &amo)
-			if err != nil {
-				if isRawPromAlert(b) {
-					sendRawPromAlertWarn()
-					return
-				}
-
-				if len(b) > 1024 {
-					log.Printf("Failed to unpack inbound alert request - %s...", string(b[:1023]))
-
-				} else {
-					log.Printf("Failed to unpack inbound alert request - %s", string(b))
-				}
-
-				return
-			}
-
-			sendWebhook(&amo)
-		})))
+	log.Fatalf("Failed to listen on HTTP: %v", http.ListenAndServe(*listenAddress, mux))
 }
