@@ -1,63 +1,153 @@
 ---
+# This is the primary test workflow that runs all unit and integration tests.
+# It is called by the build.yml workflow and can also be triggered independently.
 name: Tests
 
 on:
+  workflow_dispatch:
+  workflow_call:
   push:
     branches:
       - main
+    paths:
+      - "**/*.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - ".github/workflows/test.yml"
   pull_request:
     branches:
       - main
+    paths:
+      - "**/*.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - ".github/workflows/test.yml"
+
+env:
+  CI: true
+  GO_VERSION: '1.20'
 
 permissions:
   contents: read
-  pull-requests: write
+  pull-requests: write  # Required for coverage report comments
 
 jobs:
-  test:
+  go-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
-      - name: Checkout repository.
-        uses: actions/checkout@v4
+      - name: ⏱️ Start timer
+        id: timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Go.
+      - name: 🏷️ Set lowercase image name
+        id: image
+        run: |
+          echo "IMAGE_NAME=$(echo "${{ github.repository }}" | tr "[:upper:]" "[:lower:]")" >> "$GITHUB_ENV"
+
+      - name: 🔀 Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # Need full history for diff
+
+      - name: 🔍 Check if tests needed
+        id: check-tests
+        if: github.event_name == 'pull_request'
+        run: |
+          # Check if any Go files or test files changed
+          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE "\.(go|mod|sum)$|^tests/"; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Tests needed - Go or dependency files changed"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "⏭️ No Go or dependency files changed - tests can be skipped"
+          fi
+
+      - name: ⏭️ Skip remaining steps if not needed
+        if: github.event_name == 'pull_request' && steps.check-tests.outputs.needed == 'false'
+        run: |
+          echo "::notice title=Tests Skipped::No relevant files changed, skipping tests"
+          exit 0
+
+      - name: 🔧 Set up Go
+        if: github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true'
         uses: actions/setup-go@v5
         with:
-          go-version: '1.20'
+          go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Cache Go modules.
-        uses: actions/cache@v4
+      - name: 💾 Cache Go modules
+        if: github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true'
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-test-${{ hashFiles('**/go.sum') }}
           restore-keys: |
+            ${{ runner.os }}-go-test-
             ${{ runner.os }}-go-
 
-      - name: Download dependencies.
+      - name: 💾 Cache test results
+        if: github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true'
+        uses: actions/cache@v5
+        with:
+          path: |
+            coverage.out
+            coverage.xml
+            coverage.json
+          key: ${{ runner.os }}-test-coverage-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-test-coverage-
+
+      - name: 📦 Download dependencies
+        if: github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true'
         run: go mod download
 
-      - name: Run tests with coverage.
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+      - name: 🔍 Verify dependencies
+        if: github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true'
+        run: go mod verify
 
-      - name: Upload coverage to Codecov.
+      - name: 🧪 Run tests with coverage
+        if: github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true'
+        run: |
+          echo "🧪 Running Go tests with race detection and coverage..."
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          echo "✅ Tests completed successfully"
+
+      - name: 📊 Generate coverage reports
+        if: (github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true') && always()
+        run: |
+          # Calculate coverage percentage
+          coverage_percent=$(go tool cover -func=coverage.out | grep total | awk '{print $3}')
+          echo "📊 Total coverage: $coverage_percent"
+          echo "coverage_percent=$coverage_percent" >> "$GITHUB_OUTPUT"
+
+          # Generate HTML report for artifacts
+          go tool cover -html=coverage.out -o coverage.html
+          echo "✅ Generated HTML coverage report"
+
+      - name: 📊 Upload coverage to Codecov
+        if: github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true'
         uses: codecov/codecov-action@7f8b4b4bde536c465e797be725718b88c5d95e0e # v5.1.2
         with:
           files: ./coverage.out
           flags: go
+          name: go-coverage
           fail_ci_if_error: true
 
-      - name: Convert coverage to Cobertura format.
-        if: github.event_name == 'pull_request'
+      - name: 📋 Convert coverage to Cobertura format
+        if: github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true')
         run: |
+          echo "📋 Installing gocover-cobertura..."
           go install github.com/boumenot/gocover-cobertura@latest
+          echo "📋 Converting coverage to Cobertura format..."
           gocover-cobertura < coverage.out > coverage.xml
+          echo "✅ Conversion complete"
 
-      - name: Code Coverage Summary Report.
-        if: github.event_name == 'pull_request'
+      - name: 📊 Code Coverage Summary Report
+        if: github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true')
         uses: irongut/CodeCoverageSummary@51cc3a756ddcd398d447c044c02cb6aa83fdae95 # v1.3.0
         with:
           filename: coverage.xml
@@ -65,15 +155,142 @@ jobs:
           format: markdown
           output: both
 
-      - name: Add Coverage PR Comment.
-        if: github.event_name == 'pull_request'
+      - name: 💬 Add Coverage PR Comment
+        if: github.event_name == 'pull_request' && (github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true')
         uses: marocchino/sticky-pull-request-comment@331f8f5b4215f0445d3c07b4967662a32a2d3e31 # v2.9.0
         with:
           recreate: true
           path: code-coverage-results.md
 
-      - name: Send notification to Discord.
+      - name: 📦 Upload coverage artifacts
+        if: github.event_name != 'pull_request' || steps.check-tests.outputs.needed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-reports
+          path: |
+            coverage.out
+            coverage.xml
+            coverage.html
+          retention-days: 30
+
+      - name: 📊 Collect metrics
+        if: always()
+        id: metrics
+        run: |
+          end_time=$(date +%s)
+          duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
+          echo "duration=${duration}" >> "$GITHUB_OUTPUT"
+
+          # Get test count if tests ran
+          if [ -f coverage.out ]; then
+            # Count test functions
+            test_count=$(grep -r "^func Test" . --include="*_test.go" | wc -l)
+            echo "test_count=$test_count" >> "$GITHUB_OUTPUT"
+            echo "::notice title=Test Metrics::Duration: ${duration}s, Tests: $test_count"
+          else
+            echo "::notice title=Test Metrics::Duration: ${duration}s (skipped)"
+          fi
+
+      - name: 📢 Send notification to Discord
         uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
         if: always()
         with:
+          title: "Tests - ${{ env.IMAGE_NAME }}"
+          description: |
+            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
+            Tests: ${{ steps.metrics.outputs.test_count || 'skipped' }}
+            Workflow: Unit & Integration Tests
+            Go Version: ${{ env.GO_VERSION }}
+            Status: ${{ job.status }}
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+
+  benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: ⏱️ Start timer
+        id: timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: 🔀 Checkout repository
+        uses: actions/checkout@v6
+
+      - name: 🔧 Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: 💾 Cache benchmark results
+        uses: actions/cache@v5
+        with:
+          path: |
+            bench.txt
+            bench_prev.txt
+          key: ${{ runner.os }}-benchmark-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-benchmark-
+
+      - name: 🔍 Check for benchmark tests
+        id: check-benchmarks
+        run: |
+          if grep -r "^func Benchmark" . --include="*_test.go" -q; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "✅ Benchmark tests found"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "⏭️ No benchmark tests found - skipping benchmarks"
+          fi
+
+      - name: 🏃 Run benchmarks
+        if: steps.check-benchmarks.outputs.exists == 'true'
+        run: |
+          echo "🏃 Running Go benchmarks..."
+          go test -bench=. -benchmem -run=^$ ./... | tee bench.txt
+          echo "✅ Benchmarks complete"
+
+      - name: 📊 Compare with previous benchmarks
+        if: steps.check-benchmarks.outputs.exists == 'true' && github.event_name == 'pull_request'
+        run: |
+          if [ -f bench_prev.txt ]; then
+            echo "📊 Comparing with previous benchmark results..."
+            # Install benchstat if comparison is needed
+            go install golang.org/x/perf/cmd/benchstat@latest
+            benchstat bench_prev.txt bench.txt || true
+          else
+            echo "ℹ️ No previous benchmark data available for comparison"
+          fi
+
+      - name: 📦 Upload benchmark results
+        if: steps.check-benchmarks.outputs.exists == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: bench.txt
+          retention-days: 90
+
+      - name: 💾 Save benchmark results for next run
+        if: steps.check-benchmarks.outputs.exists == 'true' && github.event_name == 'push'
+        run: cp bench.txt bench_prev.txt
+
+      - name: 📊 Collect metrics
+        if: always()
+        id: metrics
+        run: |
+          end_time=$(date +%s)
+          duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
+          echo "duration=${duration}" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Benchmark Metrics::Duration: ${duration}s"
+
+      - name: 📢 Send notification to Discord
+        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
+        if: always()
+        with:
+          title: "Benchmarks - ${{ github.event.repository.name }}"
+          description: |
+            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
+            Workflow: Benchmark Tests
+            Go Version: ${{ env.GO_VERSION }}
+            Status: ${{ job.status }}
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
