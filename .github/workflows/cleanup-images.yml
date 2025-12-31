@@ -38,11 +38,30 @@ jobs:
           echo "PACKAGE=$(echo "${{ github.event.repository.name }}" | tr "[:upper:]" "[:lower:]")" >> "$GITHUB_ENV"
           echo "📦 Owner: ${{ github.repository_owner }}"
           echo "📦 Package: ${{ github.event.repository.name }}"
+          echo "📦 Package URL: ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}"
+
+      - name: 🔍 Validate package access
+        id: validate
+        continue-on-error: true
+        run: |
+          echo "🔍 Checking package access..."
+          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/user/packages/container/${PACKAGE}/versions")
+          echo "response_code=${RESPONSE}" >> "$GITHUB_OUTPUT"
+          if [ "${RESPONSE}" = "200" ]; then
+            echo "✅ Package access confirmed"
+          else
+            echo "⚠️ Package access returned HTTP ${RESPONSE}"
+            echo "This might indicate the package doesn't exist or needs different permissions"
+          fi
 
       - name: 🧹 Cleanup Docker images
         id: cleanup
         uses: dataaxiom/ghcr-cleanup-action@cd0cdb900b5dbf3a6f2cc869f0dbb0b8211f50c4 # v1.0.16
         with:
+          package-type: container
           delete-partial-images: true
           delete-untagged: true
           keep-n-tagged: 3
@@ -50,6 +69,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           owner: ${{ env.OWNER }}
           package: ${{ env.PACKAGE }}
+          log-level: info
+          validate: true
 
       - name: 📊 Collect metrics
         if: always()
@@ -68,10 +89,13 @@ jobs:
           description: |
             Registry: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.PACKAGE }}
             Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
+            Validation: HTTP ${{ steps.validate.outputs.response_code || 'N/A' }}
 
             Settings:
             • Keep last 3 tagged images
             • Delete images older than 30 days
             • Delete untagged images
             • Delete partial images
+
+            Status: ${{ job.status }}
           webhook: ${{ secrets.DISCORD_WEBHOOK }}
