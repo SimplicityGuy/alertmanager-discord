@@ -1,7 +1,7 @@
 ---
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-merge-conflict
@@ -13,23 +13,23 @@ repos:
       - id: trailing-whitespace
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.23.2
+    rev: b035497fb64e3f9faa91e833331688cc185891e6  # frozen: 0.36.0
     hooks:
       - id: check-github-workflows
 
   - repo: https://github.com/executablebooks/mdformat
-    rev: 0.7.16
+    rev: 2d496dbc18e31b83a1596685347ffe0b6041daf0  # frozen: 1.0.0
     hooks:
       - id: mdformat
         additional_dependencies:
           - mdformat-gfm
 
   - repo: https://github.com/golangci/golangci-lint
-    rev: v1.53.3
+    rev: 9f61b0f53f80672872fced07b6874397c3ed197b  # frozen: v2.7.2
     hooks:
       - id: golangci-lint
 
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.1-beta
+    rev: 4e697ba704fd23b2409b947a319c19c3ee54d24f  # frozen: v2.14.0
     hooks:
       - id: hadolint
