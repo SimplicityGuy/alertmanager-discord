@@ -1,4 +1,4 @@
-FROM golang:alpine as builder
+FROM golang:alpine AS builder
 
 LABEL org.opencontainers.image.title="alertmanager-discord builder" \
       org.opencontainers.image.description="alertmanager-discord builder" \
