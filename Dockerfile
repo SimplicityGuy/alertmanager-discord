@@ -41,6 +41,9 @@ COPY --from=builder /go/bin/alertmanager-discord /go/bin/alertmanager-discord
 
 EXPOSE 9094
 
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/go/bin/alertmanager-discord", "-healthcheck"]
+
 USER notifier
 
 ENTRYPOINT ["/go/bin/alertmanager-discord"]
