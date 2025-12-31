@@ -1,0 +1,90 @@
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# GitHub
+.github/
+
+# Go
+vendor/
+*.test
+*_test.go
+coverage.out
+coverage.xml
+coverage.html
+coverage.json
+*.prof
+*.pprof
+bench.txt
+bench_prev.txt
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Project specific
+*.log
+/logs/
+
+# Environment files
+.env
+.env.docker
+.env.local
+.env.production
+.env.*.local
+
+# Security
+*.pem
+*.key
+*.crt
+*.cer
+
+# Build artifacts
+build/
+dist/
+alertmanager-discord
+alertmanager-discord.darwin
+alertmanager-discord.linux
+alertmanager-discord.windows
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Docker
+docker-compose*.yml
+Dockerfile*
+.dockerignore
+
+# Development files
+.pre-commit-config.yaml
+.yamllint
+CLAUDE.md
+# Note: README.md is needed for documentation
+# Exclude all markdown files except README.md
+**/*.md
+!README.md
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Additional IDEs
+*.swp
+*.swo
+*~
+\#*#
+.#*
+
+# CI/CD artifacts
+.codecov.yml
+.goreleaser.yml
+
+# Go module cache (should be downloaded inside container)
+go.sum.backup

@@ -4,18 +4,27 @@ repos:
     rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c  # frozen: v6.0.0
     hooks:
       - id: check-added-large-files
+      - id: check-executables-have-shebangs
+      - id: check-json
       - id: check-merge-conflict
+      - id: check-shebang-scripts-are-executable
+      - id: check-toml
       - id: check-yaml
+        args: [--unsafe]  # Allow custom tags like GitHub Actions
       - id: detect-aws-credentials
+        args: [--allow-missing-credentials]
       - id: detect-private-key
       - id: end-of-file-fixer
       - id: mixed-line-ending
       - id: trailing-whitespace
+      - id: pretty-format-json
+        args: [--autofix, --indent=2]
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: b035497fb64e3f9faa91e833331688cc185891e6  # frozen: 0.36.0
     hooks:
       - id: check-github-workflows
+      - id: check-github-actions
 
   - repo: https://github.com/executablebooks/mdformat
     rev: 2d496dbc18e31b83a1596685347ffe0b6041daf0  # frozen: 1.0.0
@@ -23,13 +32,67 @@ repos:
       - id: mdformat
         additional_dependencies:
           - mdformat-gfm
+        files: '^(README\.md|CLAUDE\.md|docs/.*\.md|.*\.md)$'
 
   - repo: https://github.com/golangci/golangci-lint
     rev: 9f61b0f53f80672872fced07b6874397c3ed197b  # frozen: v2.7.2
     hooks:
       - id: golangci-lint
+        args: [--timeout=5m]
 
   - repo: https://github.com/hadolint/hadolint
     rev: 4e697ba704fd23b2409b947a319c19c3ee54d24f  # frozen: v2.14.0
     hooks:
       - id: hadolint
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: 0933c147c9d6587653d45fdcb4c497c57a65f9af  # frozen: v1.7.10
+    hooks:
+      - id: actionlint
+        args: ["-ignore", "SC2129"]  # Ignore "consider using { cmd1; cmd2; }" suggestion
+
+  - repo: https://github.com/adrienverge/yamllint
+    rev: 79a6b2b1392eaf49cdd32ac4f14be1a809bbd8f7  # frozen: v1.37.1
+    hooks:
+      - id: yamllint
+        args: [--strict, -c=.yamllint]
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: 745eface02aef23e168a8afb6b5737818efbea95  # frozen: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        args: ["--severity=warning"]  # Show warnings and errors
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: 2a30809d16bc7a60d9b97353c797f42b510d3368  # frozen: v3.12.0-2
+    hooks:
+      - id: shfmt
+        args: ["-i", "2", "-ci", "-bn", "-sr"]  # 2 space indent, indent case, binary next line, redirect operators
+
+  # Go-specific checks
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: go fmt
+        entry: bash -c 'gofmt -l . | grep ".*\.go" && exit 1 || exit 0'
+        language: system
+        files: '\.go$'
+        pass_filenames: false
+      - id: go-vet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        files: '\.go$'
+        pass_filenames: false
+      - id: go-mod-tidy
+        name: go mod tidy
+        entry: bash -c 'go mod tidy && git diff --exit-code go.mod $(test -f go.sum && echo go.sum || true)'
+        language: system
+        files: '^go\.(mod|sum)$'
+        pass_filenames: false
+      - id: go-test
+        name: go test (fast)
+        entry: go test -short ./...
+        language: system
+        files: '\.go$'
+        pass_filenames: false
