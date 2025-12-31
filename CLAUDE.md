@@ -35,13 +35,16 @@ The service **must** receive alerts from Alertmanager, not directly from Prometh
 
 ### Key Design Decisions
 
-**Single HTTP handler pattern**: Currently uses one handler for all paths (main.go:176). When adding new endpoints (e.g., `/health`), you'll need to replace this with `http.NewServeMux()` to enable routing.
+**HTTP multiplexer pattern**: Uses `http.NewServeMux()` for routing multiple endpoints (main.go:237):
+
+- `GET /health` - Health check endpoint returning `{"status":"ok"}`
+- `POST /` - Webhook handler for Alertmanager alerts
 
 **Scratch-based Docker image**: The production container uses `FROM scratch` for minimal attack surface. This means:
 
 - No shell, no debugging tools in production image
-- Health checks cannot use curl/wget
-- Must implement health checking within the Go binary itself
+- Health checks implemented using `-healthcheck` flag in the Go binary
+- Binary performs self-test via HTTP GET to `/health` endpoint
 - CA certificates and user copied from builder stage
 
 **Grouped alerts**: The `sendWebhook()` function groups alerts by status before sending to Discord, ensuring one Discord message per status type (firing/resolved) rather than per individual alert.
@@ -140,8 +143,35 @@ curl -X POST http://localhost:9094 \
 
 - `-webhook.url` - Alternative to `DISCORD_WEBHOOK` environment variable
 - `-listen.address` - Alternative to `LISTEN_ADDRESS` environment variable
+- `-healthcheck` - Perform health check and exit (used by Docker HEALTHCHECK)
 
 Environment variables take precedence over CLI flags if both are set.
+
+### Health Checking
+
+The service includes built-in health checking for containerized deployments:
+
+**Health endpoint:**
+
+```bash
+curl http://localhost:9094/health
+# Returns: {"status":"ok"}
+```
+
+**Docker health check:**
+The Dockerfile includes a HEALTHCHECK instruction that runs every 30 seconds:
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD ["/go/bin/alertmanager-discord", "-healthcheck"]
+```
+
+When run with `-healthcheck`, the binary performs an HTTP GET to its own `/health` endpoint and exits with:
+
+- Exit code 0: Service is healthy
+- Exit code 1: Service is unhealthy
+
+This works with the scratch-based image without requiring external tools.
 
 ## Testing Considerations
 
@@ -161,7 +191,7 @@ The Dockerfile uses multi-stage build:
 1. **Builder stage**: Alpine-based Go build environment with CA certs and non-root user creation
 1. **Production stage**: Scratch image with only the compiled binary, certs, and passwd file
 
-**Note on health checks:** The scratch image has no shell or tools. To add health checking, implement a `/health` endpoint in the Go binary rather than trying to add curl/wget to the image.
+**Health checking:** The image includes Docker HEALTHCHECK using the `-healthcheck` flag. The binary performs self-tests via the `/health` endpoint without requiring external tools in the scratch image.
 
 ## Common Pitfalls
 
