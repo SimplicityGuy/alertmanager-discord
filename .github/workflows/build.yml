@@ -1,5 +1,5 @@
 ---
-name: alertmanager-discord
+name: Build
 
 on:
   workflow_dispatch:
