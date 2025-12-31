@@ -30,13 +30,13 @@ jobs:
           echo "IMAGE_NAME=$(echo "${{ github.repository }}" | tr "[:upper:]" "[:lower:]")" >> "$GITHUB_ENV"
 
       - name: Checkout repository.
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v6.0.0
+        uses: actions/checkout@v4
         with:
           submodules: true
 
       - name: Log in to the GitHub Container Registry.
         if: github.event_name != 'pull_request'
-        uses: docker/login-action@74a8edf4431a8b9b1c6e9813f44c0c8e4cf3d9e7 # v3.4.0
+        uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -44,7 +44,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker.
         id: meta
-        uses: docker/metadata-action@902fa8a3b83f96c775c61c4aa8c4bbfe302f17d1 # v6.0.0
+        uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -54,15 +54,15 @@ jobs:
             type=schedule,pattern={{date 'YYYYMMDD'}}
 
       - name: Set up QEMU.
-        uses: docker/setup-qemu-action@4656ae218a7362dca9e4ecdfbc7d97f9c0ff51c1 # v3.3.0
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx.
-        uses: docker/setup-buildx-action@32fb38f8e9169424c77d4e65b5d1ba6bd6113e93 # v3.9.0
+        uses: docker/setup-buildx-action@v3
         with:
           platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6
 
       - name: Build and push Docker image to GitHub Container Registry.
-        uses: docker/build-push-action@48aba3b46d1b1fec4febb7c5d0c644b249a11355 # v6.10.0
+        uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6
