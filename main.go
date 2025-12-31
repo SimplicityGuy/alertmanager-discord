@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -133,7 +133,14 @@ func sendWebhook(amo *alertManOut) {
 		DO.Embeds = []discordEmbed{RichEmbed}
 
 		DOD, _ := json.Marshal(DO)
-		http.Post(*whURL, "application/json", bytes.NewReader(DOD))
+		resp, err := http.Post(*whURL, "application/json", bytes.NewReader(DOD))
+		if err != nil {
+			log.Printf("Failed to send webhook: %v", err)
+			continue
+		}
+		if err := resp.Body.Close(); err != nil {
+			log.Printf("Failed to close response body: %v", err)
+		}
 	}
 }
 
@@ -161,7 +168,14 @@ func sendRawPromAlertWarn() {
 	}
 
 	DOD, _ := json.Marshal(DO)
-	http.Post(*whURL, "application/json", bytes.NewReader(DOD))
+	resp, err := http.Post(*whURL, "application/json", bytes.NewReader(DOD))
+	if err != nil {
+		log.Printf("Failed to send misconfiguration warning: %v", err)
+		return
+	}
+	if err := resp.Body.Close(); err != nil {
+		log.Printf("Failed to close response body: %v", err)
+	}
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
@@ -175,7 +189,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 func webhookHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("%s - [%s] %s", r.Host, r.Method, r.URL.RawPath)
 
-	b, err := ioutil.ReadAll(r.Body)
+	b, err := io.ReadAll(r.Body)
 	if err != nil {
 		panic(err)
 	}
