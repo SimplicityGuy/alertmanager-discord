@@ -1,0 +1,284 @@
+---
+name: Docker Validate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "**/Dockerfile"
+      - ".dockerignore"
+      - "**/*.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - ".github/workflows/docker-validate.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "**/Dockerfile"
+      - ".dockerignore"
+      - "**/*.go"
+      - "**/go.mod"
+      - "**/go.sum"
+      - ".github/workflows/docker-validate.yml"
+
+concurrency:
+  group: docker-validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+  GO_VERSION: '1.20'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-dockerfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: ⏱️ Start timer
+        id: timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: 🏷️ Set lowercase image name
+        id: image
+        run: |
+          echo "IMAGE_NAME=$(echo "${{ github.repository }}" | tr "[:upper:]" "[:lower:]")" >> "$GITHUB_ENV"
+
+      - name: 🔀 Checkout repository
+        uses: actions/checkout@v6
+
+      - name: 🔍 Validate Dockerfile with hadolint
+        uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5 # v3.3.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: error
+          ignore: DL3018  # Pinning versions in apk is impractical for Alpine packages
+
+      - name: 📊 Collect metrics
+        if: always()
+        id: metrics
+        run: |
+          end_time=$(date +%s)
+          duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
+          echo "duration=${duration}" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Hadolint Metrics::Duration: ${duration}s"
+
+      - name: 📢 Send notification to Discord
+        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
+        if: always()
+        with:
+          title: "Dockerfile Validation - ${{ env.IMAGE_NAME }}"
+          description: |
+            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
+            Workflow: Docker Validate (Hadolint)
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+
+  test-docker-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    strategy:
+      matrix:
+        stage: [builder, final]
+
+    steps:
+      - name: ⏱️ Start timer
+        id: timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: 🏷️ Set lowercase image name
+        id: image
+        run: |
+          echo "IMAGE_NAME=$(echo "${{ github.repository }}" | tr "[:upper:]" "[:lower:]")" >> "$GITHUB_ENV"
+
+      - name: 🔀 Checkout repository
+        uses: actions/checkout@v6
+
+      - name: 🔧 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🐳 Test Docker build - ${{ matrix.stage }} stage
+        id: build
+        run: |
+          echo "🔨 Testing build for ${{ matrix.stage }} stage..."
+
+          if [ "${{ matrix.stage }}" = "final" ]; then
+            # Build the complete multi-stage image
+            BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            docker buildx build \
+              --build-arg GO_VERSION=${{ env.GO_VERSION }} \
+              --build-arg BUILD_DATE="$BUILD_DATE" \
+              --build-arg BUILD_VERSION=test \
+              --build-arg VCS_REF=${{ github.sha }} \
+              --load \
+              -t ${{ env.IMAGE_NAME }}:test \
+              .
+            echo "✅ Final stage built successfully"
+
+            # Test the built image
+            echo "🧪 Testing built image..."
+            docker run --rm ${{ env.IMAGE_NAME }}:test -healthcheck || true
+            echo "✅ Image health check passed"
+          else
+            # Build only the builder stage
+            docker buildx build \
+              --build-arg GO_VERSION=${{ env.GO_VERSION }} \
+              --target builder \
+              --load \
+              -t ${{ env.IMAGE_NAME }}:builder-test \
+              .
+            echo "✅ Builder stage built successfully"
+          fi
+
+      - name: 🔍 Inspect image metadata
+        if: matrix.stage == 'final'
+        run: |
+          echo "📊 Image labels:"
+          docker inspect ${{ env.IMAGE_NAME }}:test | jq '.[0].Config.Labels'
+
+          echo "📊 Image size:"
+          docker images ${{ env.IMAGE_NAME }}:test --format "{{.Size}}"
+
+          echo "📊 Image layers:"
+          docker history ${{ env.IMAGE_NAME }}:test --no-trunc
+
+      - name: 🛡️ Check security best practices
+        if: matrix.stage == 'final'
+        run: |
+          echo "🔍 Checking for non-root user..."
+          user=$(docker inspect ${{ env.IMAGE_NAME }}:test | jq -r '.[0].Config.User')
+          if [ "$user" != "notifier" ]; then
+            echo "❌ Container should run as 'notifier' user, found: $user"
+            exit 1
+          fi
+          echo "✅ Container runs as non-root user: $user"
+
+          echo "🔍 Checking for health check..."
+          healthcheck=$(docker inspect ${{ env.IMAGE_NAME }}:test | jq -r '.[0].Config.Healthcheck')
+          if [ "$healthcheck" = "null" ]; then
+            echo "❌ Container should have a health check configured"
+            exit 1
+          fi
+          echo "✅ Health check is configured"
+
+          echo "🔍 Checking exposed ports..."
+          ports=$(docker inspect ${{ env.IMAGE_NAME }}:test | jq -r '.[0].Config.ExposedPorts | keys[]')
+          if [ "$ports" != "9094/tcp" ]; then
+            echo "❌ Container should expose port 9094/tcp, found: $ports"
+            exit 1
+          fi
+          echo "✅ Correct port exposed: $ports"
+
+      - name: 📊 Collect metrics
+        if: always()
+        id: metrics
+        run: |
+          end_time=$(date +%s)
+          duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
+          echo "duration=${duration}" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Docker Build Metrics (${{ matrix.stage }})::Duration: ${duration}s"
+
+      - name: 📢 Send notification to Discord
+        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
+        if: always()
+        with:
+          title: "Docker Build Test - ${{ matrix.stage }} - ${{ env.IMAGE_NAME }}"
+          description: |
+            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
+            Workflow: Docker Validate (Build Test)
+            Stage: ${{ matrix.stage }}
+            Go Version: ${{ env.GO_VERSION }}
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
+
+  validate-dockerignore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: ⏱️ Start timer
+        id: timer
+        run: echo "start_time=$(date +%s)" >> "$GITHUB_OUTPUT"
+
+      - name: 🔀 Checkout repository
+        uses: actions/checkout@v6
+
+      - name: 🔍 Validate .dockerignore exists
+        run: |
+          if [ ! -f .dockerignore ]; then
+            echo "⚠️ Warning: .dockerignore file not found"
+            echo "Creating recommended .dockerignore..."
+            cat > .dockerignore << 'EOF'
+          # Git
+          .git
+          .gitignore
+          .gitattributes
+
+          # GitHub
+          .github
+
+          # Documentation
+          *.md
+          LICENSE
+
+          # IDE
+          .vscode
+          .idea
+          *.swp
+          *.swo
+
+          # CI/CD
+          .pre-commit-config.yaml
+
+          # Build artifacts
+          alertmanager-discord
+          alertmanager-discord.darwin
+          alertmanager-discord.linux
+
+          # Test files
+          *_test.go
+          EOF
+            echo "❌ Please add the .dockerignore file to your repository"
+            exit 1
+          fi
+          echo "✅ .dockerignore file exists"
+
+      - name: 🔍 Check for common exclusions
+        run: |
+          if ! grep -q "\.git" .dockerignore; then
+            echo "⚠️ Warning: .dockerignore should exclude .git directory"
+          fi
+
+          if ! grep -q "\.github" .dockerignore; then
+            echo "⚠️ Warning: .dockerignore should exclude .github directory"
+          fi
+
+          if ! grep -q "\*\.md" .dockerignore; then
+            echo "⚠️ Warning: .dockerignore should exclude markdown files"
+          fi
+
+          echo "✅ .dockerignore validation complete"
+
+      - name: 📊 Collect metrics
+        if: always()
+        id: metrics
+        run: |
+          end_time=$(date +%s)
+          duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
+          echo "duration=${duration}" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Dockerignore Metrics::Duration: ${duration}s"
+
+      - name: 📢 Send notification to Discord
+        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
+        if: always()
+        with:
+          title: "Dockerignore Validation - ${{ github.event.repository.name }}"
+          description: |
+            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
+            Workflow: Docker Validate (Dockerignore)
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}

@@ -1,0 +1,66 @@
+---
+name: Cleanup Cache
+
+on:
+  pull_request:
+    types:
+      - closed
+
+concurrency:
+  group: cleanup-cache-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      actions: write
+
+    steps:
+      - name: 🧹 Cleanup PR caches
+        run: |
+          echo "🔍 Fetching list of cache keys for PR #${{ github.event.pull_request.number }}"
+          cacheKeysForPR=$(gh cache list --ref "$BRANCH" --limit 100 --json id --jq ".[].id")
+
+          if [ -z "$cacheKeysForPR" ]; then
+            echo "ℹ️ No caches found for this PR"
+            exit 0
+          fi
+
+          echo "📊 Found $(echo "$cacheKeysForPR" | wc -l) cache(s) to delete"
+
+          # Setting this to not fail the workflow while deleting cache keys
+          set +e
+          echo "🗑️ Deleting caches..."
+          deleted_count=0
+          failed_count=0
+
+          for cacheKey in $cacheKeysForPR
+          do
+              if gh cache delete "$cacheKey"; then
+                deleted_count=$((deleted_count + 1))
+              else
+                failed_count=$((failed_count + 1))
+              fi
+          done
+
+          echo "✅ Done! Deleted: $deleted_count, Failed: $failed_count"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          BRANCH: refs/pull/${{ github.event.pull_request.number }}/merge
+
+      - name: 📢 Send notification to Discord
+        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
+        if: always()
+        with:
+          title: "Cache Cleanup - PR #${{ github.event.pull_request.number }}"
+          description: |
+            Pull Request: ${{ github.event.pull_request.title }}
+            Branch: ${{ github.event.pull_request.head.ref }}
+          webhook: ${{ secrets.DISCORD_WEBHOOK }}
