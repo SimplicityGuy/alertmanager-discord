@@ -36,6 +36,7 @@ jobs:
 
   build-alertmanager-discord:
     needs: [run-tests]
+    if: github.event_name != 'pull_request'
 
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -78,7 +79,6 @@ jobs:
           df -h
 
       - name: 🔒 Log in to the GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -93,7 +93,6 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=branch
-            type=ref,event=pr
             type=schedule,pattern={{date 'YYYYMMDD'}}
 
       - name: 🔧 Set up QEMU
@@ -112,7 +111,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: true

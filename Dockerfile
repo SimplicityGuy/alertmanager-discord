@@ -7,6 +7,7 @@ ARG VCS_REF
 FROM golang:${GO_VERSION}-alpine AS builder
 
 # Re-declare args after FROM to make them available in this stage
+ARG GO_VERSION
 ARG BUILD_DATE
 ARG BUILD_VERSION
 ARG VCS_REF
