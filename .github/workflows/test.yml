@@ -54,9 +54,11 @@ jobs:
       - name: 🔍 Check if tests needed
         id: check-tests
         if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
           # Check if any Go files or test files changed
-          if git diff --name-only "origin/${{ github.base_ref }}...HEAD" | grep -qE "\.(go|mod|sum)$|^tests/"; then
+          if git diff --name-only "origin/${BASE_REF}...HEAD" | grep -qE "\.(go|mod|sum)$|^tests/"; then
             echo "needed=true" >> "$GITHUB_OUTPUT"
             echo "✅ Tests needed - Go or dependency files changed"
           else

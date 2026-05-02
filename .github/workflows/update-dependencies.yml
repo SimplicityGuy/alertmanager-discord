@@ -79,11 +79,13 @@ jobs:
 
       - name: 🚀 Update Go dependencies
         id: update
+        env:
+          MAJOR_UPGRADES: ${{ github.event.inputs.major_upgrades }}
         run: |
           echo "🔍 Checking for dependency updates..."
 
           # Update strategy based on inputs
-          if [[ "${{ github.event.inputs.major_upgrades }}" == "true" ]]; then
+          if [[ "$MAJOR_UPGRADES" == "true" ]]; then
             echo "📦 Updating all dependencies (including major versions)..."
             go get -u ./...
           else
@@ -159,10 +161,16 @@ jobs:
 
       - name: 🔄 Update Go version in workflows (if requested)
         if: steps.analyze.outputs.no_changes != 'true' && github.event.inputs.update_go_version == 'true'
+        env:
+          NEW_GO_VERSION: ${{ github.event.inputs.go_version }}
         run: |
           echo "🔄 Updating Go version in workflow files..."
 
-          NEW_GO_VERSION="${{ github.event.inputs.go_version }}"
+          # Validate format (e.g. 1.20, 1.21.5) to prevent injection via sed
+          if ! [[ "$NEW_GO_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "❌ Invalid Go version format: $NEW_GO_VERSION"
+            exit 1
+          fi
 
           # Update all workflow files that use GO_VERSION
           find .github/workflows -name "*.yml" -type f -exec sed -i "s/GO_VERSION: '[0-9.]*'/GO_VERSION: '$NEW_GO_VERSION'/g" {} +
@@ -188,15 +196,21 @@ jobs:
       - name: 📝 Generate PR title
         if: steps.analyze.outputs.no_changes != 'true'
         id: pr-title
+        env:
+          UPDATE_GO_VERSION: ${{ github.event.inputs.update_go_version }}
+          NEW_GO_VERSION: ${{ github.event.inputs.go_version }}
+          CHANGES: ${{ steps.analyze.outputs.direct_changes }}
         run: |
           PR_TITLE="chore(deps): update Go dependencies"
 
-          if [[ "${{ github.event.inputs.update_go_version }}" == "true" ]]; then
-            PR_TITLE="$PR_TITLE (Go ${{ github.event.inputs.go_version }})"
+          if [[ "$UPDATE_GO_VERSION" == "true" ]]; then
+            # Validate format before embedding in title
+            if [[ "$NEW_GO_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+              PR_TITLE="$PR_TITLE (Go $NEW_GO_VERSION)"
+            fi
           fi
 
-          CHANGES="${{ steps.analyze.outputs.direct_changes }}"
-          if [[ -n "$CHANGES" ]] && [[ "$CHANGES" -gt 0 ]]; then
+          if [[ -n "$CHANGES" ]] && [[ "$CHANGES" =~ ^[0-9]+$ ]] && [[ "$CHANGES" -gt 0 ]]; then
             PR_TITLE="$PR_TITLE ($CHANGES packages)"
           fi
 
