@@ -140,6 +140,33 @@ Pre-commit hooks are **required** and enforce:
 
 **Note**: The `go-mod-tidy` hook gracefully handles projects without `go.sum` files, making it safe for standard library-only projects.
 
+### Project Updates
+
+`scripts/update-project.sh` is the single source of truth for keeping the project current. The `update-dependencies.yml` workflow runs the same script with `--ci`, so local and CI behavior never drift.
+
+```bash
+# Preview every change without applying (recommended first run)
+./scripts/update-project.sh --dry-run
+
+# Patch + minor Go module updates, refresh pre-commit hooks, run tests
+./scripts/update-project.sh
+
+# Include major version upgrades
+./scripts/update-project.sh --major
+
+# Bump the Go version across go.mod, Dockerfile, and all workflows
+./scripts/update-project.sh --go-version 1.22
+
+# CI mode (used by the workflow): emits GITHUB_OUTPUT and skips backups
+./scripts/update-project.sh --ci
+```
+
+The script:
+
+- Creates timestamped backups in `backups/project-updates-<ts>/` (gitignored)
+- Validates the Go version against `^[0-9]+\.[0-9]+(\.[0-9]+)?$` before any sed substitution
+- In CI mode, writes `deps-before.txt`, `deps-after.txt`, and `change-summary.md`, and emits `current_go_version`, `current_deps`, `new_deps`, `direct_changes`, and `no_changes` for downstream steps
+
 ### Running Locally
 
 ```bash
@@ -232,7 +259,7 @@ The project uses GitHub Actions for comprehensive CI/CD automation. All workflow
 - **golangci-lint job**: Comprehensive Go linting with caching
 - **go-fmt job**: Go formatting and `go vet` checks
 - All jobs run in parallel for fast feedback
-- Includes timer tracking and Discord notifications
+- Includes timer tracking and GitHub-Actions notice metrics
 
 **test.yml** - Runs on push/PR to main, triggered by Go file changes:
 
@@ -263,22 +290,24 @@ The project uses GitHub Actions for comprehensive CI/CD automation. All workflow
 - Multi-platform Docker build (amd64, arm64, arm/v7, arm/v6)
 - Pushes to GitHub Container Registry
 - Includes disk space management and cleanup
-- Metrics collection and Discord notifications
+- Metrics collection via GitHub-Actions notices
 - Uses build arguments for versioning (GO_VERSION, BUILD_DATE, VCS_REF)
 
 ### Automation Workflows
 
 **update-dependencies.yml** - Runs weekly Monday 9am UTC, manual trigger:
 
-- Two update strategies: conservative (default) or aggressive (opt-in)
-- Optional Go version updates across all workflows and Dockerfile
-- Pre-update dependency snapshots
+- Delegates the actual update work to `scripts/update-project.sh --ci`
+  so local runs and CI share identical logic (no duplication)
+- Two update strategies: conservative (default) or aggressive (`--major`)
+- Optional Go version updates across `go.mod`, `Dockerfile`, and workflows
+  (validated against `^[0-9]+\.[0-9]+(\.[0-9]+)?$` to prevent injection)
+- Untrusted `github.event.inputs.*` values flow through `env:` bindings,
+  not direct `${{ ... }}` interpolation in `run:` blocks
+- The script writes `deps-before.txt`, `deps-after.txt`, `change-summary.md`
+  and emits `GITHUB_OUTPUT` keys consumed by the PR-creation step
 - Runs tests before creating PR
-- Comprehensive PR with before/after comparison
-- Security validation with `go mod verify`
 - 20-minute timeout protection
-- **Shellcheck compliant**: Uses `grep -c` instead of `wc -l`, proper variable expansion
-- **Yamllint compliant**: Long lines split with backslashes (\<175 chars)
 
 **cleanup-cache.yml** - Runs when PR is closed:
 
@@ -302,7 +331,6 @@ The project uses GitHub Actions for comprehensive CI/CD automation. All workflow
 
 - ⏱️ Timer tracking for all jobs
 - 📊 Metrics collection and GitHub notices
-- 📢 Discord notifications with detailed status
 - 💾 Enhanced caching strategies
 - 🎯 Path-based triggering for efficiency
 - ⏰ Timeout protection on all jobs
@@ -419,7 +447,7 @@ ARG VCS_REF
 1. **Assuming scratch image has debugging tools** - It doesn't. Debug in the builder stage or locally.
 1. **Expecting individual alerts per Discord message** - Alerts are grouped by status (firing/resolved) before sending.
 1. **Forgetting to run pre-commit hooks** - Install with `pre-commit install` to run automatically on commit.
-1. **Not updating GO_VERSION in all places** - Use the update-dependencies workflow to update all files consistently.
+1. **Not updating GO_VERSION in all places** - Run `./scripts/update-project.sh --go-version X.Y` to update `go.mod`, `Dockerfile`, and all workflow files in one pass; the update-dependencies workflow does the same via `--ci`.
 1. **Skipping tests** - The build workflow requires tests to pass before building Docker images.
 1. **Shell script violations** - Use `grep -c .` instead of `wc -l` for counting lines (shellcheck SC2126).
 1. **YAML line length** - Keep lines under 175 characters or split with backslashes (yamllint).
@@ -454,9 +482,11 @@ alertmanager-discord/
 │       ├── code-quality.yml   # Linting and formatting (3 jobs)
 │       ├── test.yml           # Unit tests and benchmarks (2 jobs)
 │       ├── docker-validate.yml # Docker validation (3 jobs)
-│       ├── update-dependencies.yml # Automated dependency updates
+│       ├── update-dependencies.yml # Automated dependency updates (calls scripts/update-project.sh)
 │       ├── cleanup-cache.yml  # Cache cleanup on PR close
 │       └── cleanup-images.yml # Monthly image cleanup
+├── scripts/
+│   └── update-project.sh      # Updates Go deps, Go version, and pre-commit hooks
 └── images/
     └── example.png            # Example Discord notification
 ```
@@ -502,7 +532,6 @@ alertmanager-discord/
    - Build workflow runs on merge to main
    - Multi-platform images pushed to GHCR
    - Tagged with `latest` and git ref
-   - Discord notification sent
 
 ## Quick Reference
 
@@ -526,6 +555,12 @@ curl http://localhost:9094/health
 gofmt -l -w .
 go vet ./...
 golangci-lint run --timeout=5m
+
+# Project updates (deps, Go version, pre-commit hooks)
+./scripts/update-project.sh --dry-run     # preview
+./scripts/update-project.sh               # patch+minor
+./scripts/update-project.sh --major       # include majors
+./scripts/update-project.sh --go-version 1.22
 ```
 
 **Environment Setup:**

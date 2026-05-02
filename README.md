@@ -276,6 +276,33 @@ golangci-lint run --timeout=5m
 hadolint Dockerfile
 ```
 
+### Updating Dependencies
+
+The project ships with `scripts/update-project.sh`, which updates Go module
+dependencies, the Go version (across `go.mod`, `Dockerfile`, and the
+workflows), and pre-commit hook revisions in one pass. The
+`update-dependencies.yml` workflow invokes the same script with `--ci`,
+so local runs and weekly automation share identical logic.
+
+```bash
+# Preview what would change
+./scripts/update-project.sh --dry-run
+
+# Patch and minor updates only (default)
+./scripts/update-project.sh
+
+# Include major version upgrades
+./scripts/update-project.sh --major
+
+# Bump the Go version everywhere
+./scripts/update-project.sh --go-version 1.22
+
+# Skip backups and tests (useful in scripted contexts)
+./scripts/update-project.sh --no-backup --skip-tests
+```
+
+Backups are written to `backups/project-updates-<timestamp>/` and gitignored.
+
 ### Building Docker Image
 
 ```bash
@@ -312,7 +339,6 @@ This project uses GitHub Actions for continuous integration and deployment.
 - ✅ **Multi-platform Builds** - Automatic builds for 4 architectures
 - ✅ **Cache Management** - Automatic cleanup of stale caches and images
 - ✅ **Quality Gates** - All PRs must pass linting, tests, and formatting
-- ✅ **Discord Notifications** - Build status notifications to Discord
 
 ## Architecture
 
@@ -331,6 +357,8 @@ alertmanager-discord/
 ├── .yamllint           # YAML linting rules
 ├── .github/
 │   └── workflows/      # GitHub Actions workflows
+├── scripts/
+│   └── update-project.sh  # Project updater (deps, Go version, hooks)
 ├── images/             # Documentation images
 └── README.md           # This file
 ```
