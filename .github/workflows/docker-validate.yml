@@ -69,16 +69,6 @@ jobs:
           echo "duration=${duration}" >> "$GITHUB_OUTPUT"
           echo "::notice title=Hadolint Metrics::Duration: ${duration}s"
 
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Dockerfile Validation - ${{ env.IMAGE_NAME }}"
-          description: |
-            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Workflow: Docker Validate (Hadolint)
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-
   test-docker-build:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -184,18 +174,6 @@ jobs:
           echo "duration=${duration}" >> "$GITHUB_OUTPUT"
           echo "::notice title=Docker Build Metrics (${{ matrix.stage }})::Duration: ${duration}s"
 
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Docker Build Test - ${{ matrix.stage }} - ${{ env.IMAGE_NAME }}"
-          description: |
-            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Workflow: Docker Validate (Build Test)
-            Stage: ${{ matrix.stage }}
-            Go Version: ${{ env.GO_VERSION }}
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-
   validate-dockerignore:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -272,13 +250,3 @@ jobs:
           duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
           echo "duration=${duration}" >> "$GITHUB_OUTPUT"
           echo "::notice title=Dockerignore Metrics::Duration: ${duration}s"
-
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Dockerignore Validation - ${{ github.event.repository.name }}"
-          description: |
-            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Workflow: Docker Validate (Dockerignore)
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}

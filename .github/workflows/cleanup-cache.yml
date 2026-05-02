@@ -54,13 +54,3 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           BRANCH: refs/pull/${{ github.event.pull_request.number }}/merge
-
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Cache Cleanup - PR #${{ github.event.pull_request.number }}"
-          description: |
-            Pull Request: ${{ github.event.pull_request.title }}
-            Branch: ${{ github.event.pull_request.head.ref }}
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}

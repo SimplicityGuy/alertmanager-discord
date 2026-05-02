@@ -86,16 +86,6 @@ jobs:
           echo "duration=${duration}" >> "$GITHUB_OUTPUT"
           echo "::notice title=Pre-commit Metrics::Duration: ${duration}s"
 
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Pre-commit - ${{ env.IMAGE_NAME }}"
-          description: |
-            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Workflow: Code Quality (Pre-commit)
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-
   golangci-lint:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -144,17 +134,6 @@ jobs:
           echo "duration=${duration}" >> "$GITHUB_OUTPUT"
           echo "::notice title=Golangci-lint Metrics::Duration: ${duration}s"
 
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Golangci-lint - ${{ env.IMAGE_NAME }}"
-          description: |
-            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Workflow: Code Quality (Go Linting)
-            Go Version: ${{ env.GO_VERSION }}
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-
   go-fmt:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -193,14 +172,3 @@ jobs:
           duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
           echo "duration=${duration}" >> "$GITHUB_OUTPUT"
           echo "::notice title=Go Format Metrics::Duration: ${duration}s"
-
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Go Format Check - ${{ github.event.repository.name }}"
-          description: |
-            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Workflow: Code Quality (Go Formatting & Vet)
-            Go Version: ${{ env.GO_VERSION }}
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}

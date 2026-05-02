@@ -192,19 +192,6 @@ jobs:
             echo "::notice title=Test Metrics::Duration: ${duration}s (skipped)"
           fi
 
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Tests - ${{ env.IMAGE_NAME }}"
-          description: |
-            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Tests: ${{ steps.metrics.outputs.test_count || 'skipped' }}
-            Workflow: Unit & Integration Tests
-            Go Version: ${{ env.GO_VERSION }}
-            Status: ${{ job.status }}
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
-
   benchmark:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -283,15 +270,3 @@ jobs:
           duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
           echo "duration=${duration}" >> "$GITHUB_OUTPUT"
           echo "::notice title=Benchmark Metrics::Duration: ${duration}s"
-
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Benchmarks - ${{ github.event.repository.name }}"
-          description: |
-            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Workflow: Benchmark Tests
-            Go Version: ${{ env.GO_VERSION }}
-            Status: ${{ job.status }}
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}

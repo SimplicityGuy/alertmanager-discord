@@ -170,15 +170,3 @@ jobs:
           if [[ -n "${{ steps.docker-cache.outputs.cache-hit }}" ]]; then
             echo "::notice title=Cache Performance::Docker cache hit for alertmanager-discord"
           fi
-
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: alertmanager-discord
-          description: |
-            Build duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Cache used: true
-            Platforms: linux/amd64, linux/arm64, linux/arm/v7, linux/arm/v6
-            Version: ${{ steps.meta.outputs.version }}
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}

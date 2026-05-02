@@ -345,22 +345,3 @@ jobs:
           fi
 
           echo "═══════════════════════════════════════"
-
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Weekly Dependency Update - ${{ env.IMAGE_NAME }}"
-          description: |
-            ${{ steps.analyze.outputs.no_changes == 'true' && '✅ All dependencies are already up to date!' ||
-                (steps.create-pr.conclusion == 'success' &&
-                 format('✅ Successfully created PR with {0} dependency updates\n🔗 [Review PR]({1})\n⏱️ Duration: {2}s',
-                        steps.analyze.outputs.direct_changes,
-                        steps.create-pr.outputs.pull-request-url,
-                        steps.metrics.outputs.duration) ||
-                 '❌ Failed to update dependencies') }}
-
-            **Workflow:** Update Dependencies
-            **Go Version:** ${{ steps.pre-update.outputs.current_go_version }}
-            **Triggered by:** ${{ github.event_name }}
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}

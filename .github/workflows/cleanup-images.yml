@@ -80,22 +80,3 @@ jobs:
           duration=$((end_time - ${{ steps.timer.outputs.start_time }}))
           echo "duration=${duration}" >> "$GITHUB_OUTPUT"
           echo "::notice title=Cleanup Metrics::Duration: ${duration}s, Package: ${{ env.PACKAGE }}"
-
-      - name: 📢 Send notification to Discord
-        uses: sarisia/actions-status-discord@b8381b25576cb341b2af39926ab42c5056cc44ed # v1.15.5
-        if: always()
-        with:
-          title: "Docker Image Cleanup - ${{ env.PACKAGE }}"
-          description: |
-            Registry: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ env.PACKAGE }}
-            Duration: ${{ steps.metrics.outputs.duration || 'N/A' }}s
-            Validation: HTTP ${{ steps.validate.outputs.response_code || 'N/A' }}
-
-            Settings:
-            • Keep last 3 tagged images
-            • Delete images older than 30 days
-            • Delete untagged images
-            • Delete partial images
-
-            Status: ${{ job.status }}
-          webhook: ${{ secrets.DISCORD_WEBHOOK }}
