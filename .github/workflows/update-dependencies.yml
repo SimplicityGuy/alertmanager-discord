@@ -63,135 +63,29 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
-      - name: 📊 Pre-update dependency snapshot
-        id: pre-update
-        run: |
-          echo "📊 Current dependencies:"
-          go list -m all | tee deps-before.txt
-
-          # Count current dependencies
-          DEP_COUNT=$(go list -m all | wc -l)
-          echo "current_deps=$DEP_COUNT" >> "$GITHUB_OUTPUT"
-
-          # Get current Go version
-          CURRENT_GO_VERSION=$(go version | awk '{print $3}')
-          echo "current_go_version=$CURRENT_GO_VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: 🚀 Update Go dependencies
-        id: update
+      - name: 🚀 Run update-project.sh
+        id: analyze
         env:
           MAJOR_UPGRADES: ${{ github.event.inputs.major_upgrades }}
-        run: |
-          echo "🔍 Checking for dependency updates..."
-
-          # Update strategy based on inputs
-          if [[ "$MAJOR_UPGRADES" == "true" ]]; then
-            echo "📦 Updating all dependencies (including major versions)..."
-            go get -u ./...
-          else
-            echo "📦 Updating dependencies (patch and minor versions only)..."
-            go get -u=patch ./...
-          fi
-
-          # Tidy up dependencies
-          echo "🧹 Tidying go.mod and go.sum..."
-          go mod tidy
-
-          # Verify dependencies
-          echo "🔍 Verifying dependencies..."
-          go mod verify
-
-          # Check for vulnerabilities
-          echo "🛡️ Checking for known vulnerabilities..."
-          go list -json -m all | tee deps-after.json
-
-          echo "✅ Dependency update complete"
-
-      - name: 📊 Analyze changes
-        id: analyze
-        run: |
-          # Check if any changes were made
-          # Handle projects without go.sum (standard library only)
-          if [ -f go.sum ]; then
-            if git diff --quiet go.mod go.sum; then
-              echo "no_changes=true" >> "$GITHUB_OUTPUT"
-              echo "ℹ️ No dependency changes detected"
-              exit 0
-            fi
-          elif git diff --quiet go.mod; then
-            echo "no_changes=true" >> "$GITHUB_OUTPUT"
-            echo "ℹ️ No dependency changes detected"
-            exit 0
-          fi
-
-          echo "no_changes=false" >> "$GITHUB_OUTPUT"
-          echo "✅ Dependency changes detected"
-
-          # Get post-update dependency list
-          go list -m all | tee deps-after.txt
-
-          # Count updated dependencies
-          NEW_DEP_COUNT=$(go list -m all | grep -c .)
-          echo "new_deps=$NEW_DEP_COUNT" >> "$GITHUB_OUTPUT"
-
-          # Analyze what changed
-          echo "📊 Generating change summary..."
-
-          # Direct dependencies that changed
-          DIRECT_CHANGES=$(git diff go.mod | grep "^+\|^-" | grep -v "^+++\|^---" | grep -v "^+go " | grep -v "^-go " | grep -c .)
-          echo "direct_changes=$DIRECT_CHANGES" >> "$GITHUB_OUTPUT"
-
-          # Create detailed change summary
-          {
-            echo "## Dependency Changes"
-            echo ""
-            echo "### Modified Direct Dependencies"
-            git diff go.mod | grep "^[+-]" | grep -v "^+++\|^---" | \
-              grep -v "^[+-]go " | grep -v "^[+-]module" | grep -v "^[+-]$" | \
-              sed 's/^+/✅ Added\/Updated: /' | sed 's/^-/❌ Removed\/Downgraded: /'
-            echo ""
-            echo "### Summary"
-            echo "- Total dependencies before: ${{ steps.pre-update.outputs.current_deps }}"
-            echo "- Total dependencies after: $NEW_DEP_COUNT"
-            echo "- Direct dependency changes: $DIRECT_CHANGES"
-            echo ""
-          } > change-summary.md
-
-          cat change-summary.md
-
-      - name: 🔄 Update Go version in workflows (if requested)
-        if: steps.analyze.outputs.no_changes != 'true' && github.event.inputs.update_go_version == 'true'
-        env:
+          UPDATE_GO_VERSION: ${{ github.event.inputs.update_go_version }}
           NEW_GO_VERSION: ${{ github.event.inputs.go_version }}
         run: |
-          echo "🔄 Updating Go version in workflow files..."
-
-          # Validate format (e.g. 1.20, 1.21.5) to prevent injection via sed
-          if ! [[ "$NEW_GO_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-            echo "❌ Invalid Go version format: $NEW_GO_VERSION"
-            exit 1
+          ARGS=(--ci)
+          if [[ "$MAJOR_UPGRADES" == "true" ]]; then
+            ARGS+=(--major)
+          fi
+          if [[ "$UPDATE_GO_VERSION" == "true" ]]; then
+            ARGS+=(--go-version "$NEW_GO_VERSION")
           fi
 
-          # Update all workflow files that use GO_VERSION
-          find .github/workflows -name "*.yml" -type f -exec sed -i "s/GO_VERSION: '[0-9.]*'/GO_VERSION: '$NEW_GO_VERSION'/g" {} +
+          ./scripts/update-project.sh "${ARGS[@]}"
 
-          # Update Dockerfile if it exists
-          if [ -f Dockerfile ]; then
-            sed -i "s/ARG GO_VERSION=[0-9.]*/ARG GO_VERSION=$NEW_GO_VERSION/g" Dockerfile
-          fi
-
-          echo "✅ Go version updated to $NEW_GO_VERSION in workflows and Dockerfile"
-
-      - name: 🧪 Test updated dependencies
+      - name: 📋 Show change summary
         if: steps.analyze.outputs.no_changes != 'true'
         run: |
-          echo "🧪 Running tests with updated dependencies..."
-          go test -v ./... || {
-            echo "❌ Tests failed with updated dependencies"
-            echo "test_failed=true" >> "$GITHUB_OUTPUT"
-            exit 1
-          }
-          echo "✅ All tests passed"
+          if [[ -f change-summary.md ]]; then
+            cat change-summary.md
+          fi
 
       - name: 📝 Generate PR title
         if: steps.analyze.outputs.no_changes != 'true'
@@ -232,15 +126,13 @@ jobs:
 
             ### 📊 Update Summary
 
-            ${{ steps.analyze.outputs.summary }}
-
             **Dependency Statistics:**
-            - Total dependencies before: ${{ steps.pre-update.outputs.current_deps }}
+            - Total dependencies before: ${{ steps.analyze.outputs.current_deps }}
             - Total dependencies after: ${{ steps.analyze.outputs.new_deps }}
             - Direct dependency changes: ${{ steps.analyze.outputs.direct_changes }}
 
             **Go Version:**
-            - Current: ${{ steps.pre-update.outputs.current_go_version }}
+            - Current: ${{ steps.analyze.outputs.current_go_version }}
             ${{ github.event.inputs.update_go_version == 'true' && format('- Updated to: go{0}', github.event.inputs.go_version) || '- No version update' }}
 
             ### 📋 Changes Made

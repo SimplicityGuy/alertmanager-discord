@@ -142,6 +142,15 @@ temp/
 cache/
 
 #####
+# update-project.sh artifacts
+#####
+backups/
+deps-before.txt
+deps-after.txt
+deps-after.json
+change-summary.md
+
+#####
 # Build and Distribution
 #####
 # Build directories

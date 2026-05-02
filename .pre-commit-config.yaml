@@ -21,7 +21,7 @@ repos:
         args: [--autofix, --indent=2]
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: b035497fb64e3f9faa91e833331688cc185891e6  # frozen: 0.36.0
+    rev: ed81924a8b1cecdaa570b072528fa80c9c4d6ccd  # frozen: 0.37.1
     hooks:
       - id: check-github-workflows
       - id: check-github-actions
@@ -35,7 +35,7 @@ repos:
         files: '^(README\.md|CLAUDE\.md|docs/.*\.md|.*\.md)$'
 
   - repo: https://github.com/golangci/golangci-lint
-    rev: 9f61b0f53f80672872fced07b6874397c3ed197b  # frozen: v2.7.2
+    rev: 9aa24e94ceb7d1a8ccbde81e7424629467299a7e  # frozen: v2.12.1
     hooks:
       - id: golangci-lint
         args: [--timeout=5m]
@@ -46,13 +46,13 @@ repos:
       - id: hadolint
 
   - repo: https://github.com/rhysd/actionlint
-    rev: 0933c147c9d6587653d45fdcb4c497c57a65f9af  # frozen: v1.7.10
+    rev: 914e7df21a07ef503a81201c76d2b11c789d3fca  # frozen: v1.7.12
     hooks:
       - id: actionlint
         args: ["-ignore", "SC2129"]  # Ignore "consider using { cmd1; cmd2; }" suggestion
 
   - repo: https://github.com/adrienverge/yamllint
-    rev: 79a6b2b1392eaf49cdd32ac4f14be1a809bbd8f7  # frozen: v1.37.1
+    rev: cba56bcde1fdd01c1deb3f945e69764c291a6530  # frozen: v1.38.0
     hooks:
       - id: yamllint
         args: [--strict, -c=.yamllint]
@@ -64,7 +64,7 @@ repos:
         args: ["--severity=warning"]  # Show warnings and errors
 
   - repo: https://github.com/scop/pre-commit-shfmt
-    rev: 2a30809d16bc7a60d9b97353c797f42b510d3368  # frozen: v3.12.0-2
+    rev: 05c1426671b9237fb5e1444dd63aa5731bec0dfb  # frozen: v3.13.1-1
     hooks:
       - id: shfmt
         args: ["-i", "2", "-ci", "-bn", "-sr"]  # 2 space indent, indent case, binary next line, redirect operators
